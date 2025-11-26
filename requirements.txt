@@ -2,4 +2,3 @@ tqdm
 opencv-python
 insightface
 onnxruntime
-# onnxruntime-gpu
