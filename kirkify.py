@@ -76,15 +76,16 @@ def kirkify_frame(frame_path: str, output_path: str, faceanalysis: FaceAnalysis,
    faces = faceanalysis.get(img)
    
    if faces:  # Only process if faces detected
-       
        res = img.copy()
        for face in faces:
            res = swapper.get(res, face, kirk_face, paste_back=True)
        
        imwrite(output_path, res)
+       return True
    else:
        # Copy unchanged if no faces
        imwrite(output_path, img)
+       return False
 
 
 def process_all_frames(faceanalysis: FaceAnalysis, swapper: insightface.model_zoo.model_zoo.INSwapper):
@@ -99,45 +100,82 @@ def process_all_frames(faceanalysis: FaceAnalysis, swapper: insightface.model_zo
         output_path = f'processed_frames/{filename}'
         kirkify_frame(input_path, output_path, faceanalysis, swapper, kirk_face)
 
+def kirkify_video(TARGET_PATH, OUTPUT_PATH):
+    print("Initializing models...")
+    with suppress_output():
+        FACE_ANALYSIS, FACE_SWAPPER = initialize_faceanalysis_and_swapper()
+
+    print("Extracting frames...")
+    extract_frames(TARGET_PATH)
+    
+    print("Extracting audio...")
+    AUDIO_PATH = extract_audio(TARGET_PATH)
+    
+    print("Processing frames...")
+    process_all_frames(FACE_ANALYSIS, FACE_SWAPPER)
+    
+    print("Reconstructing video...")
+    FPS = get_video_fps(TARGET_PATH)
+    reconstruct_video(FPS, AUDIO_PATH, OUTPUT_PATH)
+    
+    print("Cleaning up...")
+    cleanup(AUDIO_PATH)
+    
+    print(f"Done! Output saved to {OUTPUT_PATH}")
+
+def kirkify_image(TARGET_PATH, OUTPUT_PATH):
+    print("Initializing models...")
+    with suppress_output():
+        FACE_ANALYSIS, FACE_SWAPPER = initialize_faceanalysis_and_swapper()
+
+    kirk = imread(f'kirks/kirk_{randint(0, 2)}.jpg')
+    kirk_face = FACE_ANALYSIS.get(kirk)[0]
+
+    print("Kirkifying...")
+    FACE_DETECTED = kirkify_frame(TARGET_PATH, OUTPUT_PATH, FACE_ANALYSIS, FACE_SWAPPER, kirk_face)
+
+    if not FACE_DETECTED:
+        print("No faces detected. Image unchanged.")
+
+    print(f"Done! Output saved to {OUTPUT_PATH}")
+
 def main():
-   if len(sys.argv) > 1 and sys.argv[1] == "init":
-       with suppress_output():
-           faceanalysis, swapper = initialize_faceanalysis_and_swapper()
-       print("initialized!!")
-       exit()
+    if len(sys.argv) > 1 and sys.argv[1] == "init":
+        initialize_faceanalysis_and_swapper()
+        print("Initialized!")
+        exit()
 
-   if len(sys.argv) != 3:
-       print("Usage: python script.py <input_video> <output_video>")
-       sys.exit(1)
+    if len(sys.argv) < 2:
+        print("Usage: python3 kirkify.py <input_media> [output_path]")
+        exit(1)
 
-   TARGET_PATH = sys.argv[1]
-   OUTPUT_PATH = sys.argv[2]
+    TARGET_PATH = sys.argv[1]
 
-   if not Path(TARGET_PATH).exists():
-       print("ERROR: target path not real")
-       sys.exit(1)
+    if not Path(TARGET_PATH).exists():
+        print("ERROR: target path not real")
+        exit(1)
+    
+    IS_IMAGE = False
+    FILE_EXT = os.path.splitext(TARGET_PATH)[1].lower()
 
-   # Initialize models
-   #with suppress_output():
-   faceanalysis, swapper = initialize_faceanalysis_and_swapper()
+    image_extensions = {'.jpg', '.jpeg', '.png', '.webp'}
+    video_extensions = {'.mp4', '.mov', '.avi', '.mkv', '.flv'}
 
-   print("Extracting frames...")
-   extract_frames(TARGET_PATH)
-   
-   print("Extracting audio...")
-   audio_path = extract_audio(TARGET_PATH)
-   
-   print("Processing frames...")
-   process_all_frames(faceanalysis, swapper)
-   
-   print("Reconstructing video...")
-   fps = get_video_fps(TARGET_PATH)
-   reconstruct_video(fps, audio_path, OUTPUT_PATH)
-   
-   print("Cleaning up...")
-   cleanup(audio_path)
-   
-   print(f"Done! Output saved to {OUTPUT_PATH}")
+    if FILE_EXT in image_extensions:
+        IS_IMAGE = True
+    elif FILE_EXT in video_extensions:
+        IS_IMAGE = False
+    else:
+        raise ValueError('Must be an image or video.')
+
+    
+    OUTPUT_PATH = sys.argv[2] if len(sys.argv) > 2 else f"output{FILE_EXT}"
+
+
+    if IS_IMAGE:
+        kirkify_image(TARGET_PATH, OUTPUT_PATH)
+    else:
+        kirkify_video(TARGET_PATH, OUTPUT_PATH)
 
 if __name__ == "__main__":
    main()
