@@ -8,6 +8,7 @@ wheels/
 
 # Virtual environments
 .venv
+.DS_Store
 uv.lock
 pyproject.toml
 
@@ -16,3 +17,4 @@ unprocessed_frames/
 tests/
 
 inswapper_128.onnx
+audio.aac

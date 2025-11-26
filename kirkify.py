@@ -1,15 +1,17 @@
 import sys
 import os
-import subprocess
-import shutil
+
+from subprocess import run
+from shutil import rmtree
 from pathlib import Path
 from random import randint
 from contextlib import contextmanager
 from tqdm import tqdm
-import cv2
+
+os.environ["NO_ALBUMENTATIONS_UPDATE"] = "1"
 import insightface
 from insightface.app import FaceAnalysis
-from cv2 import imread, imwrite
+from cv2 import imread, imwrite, VideoCapture, CAP_PROP_FPS
 
 @contextmanager
 def suppress_output():
@@ -28,15 +30,15 @@ def initialize_faceanalysis_and_swapper() -> tuple[FaceAnalysis, insightface.mod
    return faceanalysis, swapper
 
 def get_video_fps(video_path: str) -> float:
-   cap = cv2.VideoCapture(video_path)
-   fps = cap.get(cv2.CAP_PROP_FPS)
+   cap = VideoCapture(video_path)
+   fps = cap.get(CAP_PROP_FPS)
    cap.release()
    return fps
 
 def extract_frames(video_path: str):
    """Extract all frames to unprocessed_frames/"""
    os.makedirs('unprocessed_frames', exist_ok=True)
-   subprocess.run([
+   run([
        'ffmpeg', '-i', video_path,
        '-q:v', '2',
        'unprocessed_frames/frame_%04d.png'
@@ -44,7 +46,7 @@ def extract_frames(video_path: str):
 
 def extract_audio(video_path: str) -> str:
    """Extract audio to audio.aac"""
-   subprocess.run([
+   run([
        'ffmpeg', '-i', video_path,
        '-map', '0:a', '-acodec', 'copy',
        'audio.aac'
@@ -54,7 +56,7 @@ def extract_audio(video_path: str) -> str:
 def reconstruct_video(fps: float, audio_path: str, output_path: str):
    """Combine processed frames with audio"""
    os.makedirs('processed_frames', exist_ok=True)
-   subprocess.run([
+   run([
        'ffmpeg', '-framerate', str(fps),
        '-i', 'processed_frames/frame_%04d.png',
        '-i', audio_path,
@@ -65,8 +67,8 @@ def reconstruct_video(fps: float, audio_path: str, output_path: str):
 
 def cleanup(audio_path: str):
    """Remove intermediate files"""
-   shutil.rmtree('unprocessed_frames', ignore_errors=True)
-   shutil.rmtree('processed_frames', ignore_errors=True)
+   rmtree('unprocessed_frames', ignore_errors=True)
+   rmtree('processed_frames', ignore_errors=True)
    if os.path.exists(audio_path):
        os.remove(audio_path)
 
@@ -171,11 +173,14 @@ def main():
     
     OUTPUT_PATH = sys.argv[2] if len(sys.argv) > 2 else f"output{FILE_EXT}"
 
-
-    if IS_IMAGE:
-        kirkify_image(TARGET_PATH, OUTPUT_PATH)
-    else:
-        kirkify_video(TARGET_PATH, OUTPUT_PATH)
+    try:
+        if IS_IMAGE:
+            kirkify_image(TARGET_PATH, OUTPUT_PATH)
+        else:
+            kirkify_video(TARGET_PATH, OUTPUT_PATH)
+    except KeyboardInterrupt:
+        cleanup('audio.aac')
+        print("Goodbye!")
 
 if __name__ == "__main__":
    main()
